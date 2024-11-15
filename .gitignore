@@ -112,3 +112,11 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+
+# custom folders
+log/
+data/
+wandb/
+
+# hdf5 files
+*.hdf5

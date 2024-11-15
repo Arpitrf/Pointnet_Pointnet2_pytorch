@@ -14,10 +14,12 @@ import provider
 import importlib
 import shutil
 import argparse
+import wandb
 
 from pathlib import Path
 from tqdm import tqdm
 from data_utils.ModelNetDataLoader import ModelNetDataLoader
+from data_utils.OGDataLoader import SequenceDataset, prepare_data
 
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 ROOT_DIR = BASE_DIR
@@ -30,7 +32,7 @@ def parse_args():
     parser.add_argument('--gpu', type=str, default='0', help='specify gpu device')
     parser.add_argument('--batch_size', type=int, default=24, help='batch size in training')
     parser.add_argument('--model', default='pointnet_cls', help='model name [default: pointnet_cls]')
-    parser.add_argument('--num_category', default=40, type=int, choices=[10, 40],  help='training on ModelNet10/40')
+    parser.add_argument('--num_category', default=1, type=int, choices=[10, 40],  help='training on ModelNet10/40')
     parser.add_argument('--epoch', default=200, type=int, help='number of epoch in training')
     parser.add_argument('--learning_rate', default=0.001, type=float, help='learning rate in training')
     parser.add_argument('--num_point', type=int, default=1024, help='Point Number')
@@ -40,6 +42,7 @@ def parse_args():
     parser.add_argument('--use_normals', action='store_true', default=False, help='use normals')
     parser.add_argument('--process_data', action='store_true', default=False, help='save data offline')
     parser.add_argument('--use_uniform_sample', action='store_true', default=False, help='use uniform sampiling')
+    parser.add_argument('--use_wandb', action='store_true', default=False, help='use wandb')
     return parser.parse_args()
 
 
@@ -54,35 +57,43 @@ def test(model, loader, num_class=40):
     class_acc = np.zeros((num_class, 3))
     classifier = model.eval()
 
-    for j, (points, target) in tqdm(enumerate(loader), total=len(loader)):
+    for j, batch in tqdm(enumerate(loader), total=len(loader)):
+        # points, target = batch 
+        # actions = torch.tensor([])
+        points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
 
         if not args.use_cpu:
-            points, target = points.cuda(), target.cuda()
+            points, actions, target = points.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
 
         points = points.transpose(2, 1)
-        pred, _ = classifier(points)
-        pred_choice = pred.data.max(1)[1]
+        pred, _ = classifier(points, actions)
+        # pred_choice = pred.data.max(1)[1]
+        probabilities = torch.sigmoid(pred)
+        # Convert probabilities to binary predictions (0 or 1)
+        pred_choice = (probabilities >= 0.5).float()
 
-        for cat in np.unique(target.cpu()):
-            classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
-            class_acc[cat, 0] += classacc.item() / float(points[target == cat].size()[0])
-            class_acc[cat, 1] += 1
+        # for cat in np.unique(target.cpu()):
+        #     # classacc = pred_choice[target == cat].eq(target[target == cat].long().data).cpu().sum()
+        #     classacc = pred_choice[target == cat].eq(target[target == cat].data).cpu().sum()
+        #     class_acc[cat, 0] += classacc.item() / float(points[target == cat].size()[0])
+        #     class_acc[cat, 1] += 1
 
         correct = pred_choice.eq(target.long().data).cpu().sum()
         mean_correct.append(correct.item() / float(points.size()[0]))
 
-    class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
-    class_acc = np.mean(class_acc[:, 2])
+    # class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
+    # class_acc = np.mean(class_acc[:, 2])
     instance_acc = np.mean(mean_correct)
+    wandb.log({"test/correct": instance_acc})
 
-    return instance_acc, class_acc
+    return instance_acc
 
 
 def main(args):
     def log_string(str):
         logger.info(str)
         print(str)
-
+    
     '''HYPER PARAMETER'''
     os.environ["CUDA_VISIBLE_DEVICES"] = args.gpu
 
@@ -118,13 +129,73 @@ def main(args):
     log_string('Load dataset ...')
     data_path = 'data/modelnet40_normal_resampled/'
 
-    train_dataset = ModelNetDataLoader(root=data_path, args=args, split='train', process_data=args.process_data)
-    test_dataset = ModelNetDataLoader(root=data_path, args=args, split='test', process_data=args.process_data)
-    trainDataLoader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, drop_last=True)
-    testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
+    wandb.init(
+        project="safety_violation_detection",
+        reinit=True,
+        mode="online" if args.use_wandb else "offline",
+        settings=wandb.Settings(start_method="fork"),
+    )
+
+    # train_dataset = ModelNetDataLoader(root=data_path, args=args, split='train', process_data=args.process_data)
+    # trainDataLoader = torch.utils.data.DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=10, drop_last=True)
+    # test_dataset = ModelNetDataLoader(root=data_path, args=args, split='test', process_data=args.process_data)
+    # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
+
+    # loading custom dataset
+    train_dataset = SequenceDataset(
+        hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data/dataset.hdf5',
+        obs_keys=('pcd',),  # observations we want to appear in batches
+        # obs_info_keys=('seg_instance_id_info',),
+        dataset_keys=(  # can optionally specify more keys here if they should appear in batches
+            "actions",
+            "grasped",
+            "contacts"
+        ),
+        seq_length=1,  # length-10 temporal sequences
+        pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
+        hdf5_normalize_obs=False,
+        filter_by_attribute='train',  # filter either train or validation data
+        image_size=[64, 64],
+    )
+    trainDataLoader = torch.utils.data.DataLoader(
+        dataset=train_dataset,
+        sampler=None,  # no custom sampling logic (uniform sampling)
+        batch_size=args.batch_size,
+        shuffle=True, 
+        num_workers=10,  
+        # drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
+        collate_fn=prepare_data,
+    )
+
+    test_dataset = SequenceDataset(
+        hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data/dataset.hdf5',
+        obs_keys=('pcd',),  # observations we want to appear in batches
+        # obs_info_keys=('seg_instance_id_info',),
+        dataset_keys=(  # can optionally specify more keys here if they should appear in batches
+            "actions",
+            "grasped",
+            "contacts"
+        ),
+        seq_length=1,  # length-10 temporal sequences
+        pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
+        hdf5_normalize_obs=False,
+        filter_by_attribute='valid',  # filter either train or validation data
+        image_size=[64, 64],
+    )
+    testDataLoader = torch.utils.data.DataLoader(
+        dataset=test_dataset,
+        sampler=None,  # no custom sampling logic (uniform sampling)
+        batch_size=args.batch_size,
+        shuffle=False, 
+        num_workers=10,  
+        # drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
+        collate_fn=prepare_data,
+    )
+
 
     '''MODEL LOADING'''
     num_class = args.num_category
+    print("args.model: ", args.model)
     model = importlib.import_module(args.model)
     shutil.copy('./models/%s.py' % args.model, str(exp_dir))
     shutil.copy('models/pointnet2_utils.py', str(exp_dir))
@@ -172,7 +243,11 @@ def main(args):
         classifier = classifier.train()
 
         scheduler.step()
-        for batch_id, (points, target) in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
+        for batch_id, batch in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
+            # points, target = batch 
+            # actions = torch.tensor([])
+            points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
+            # print("point, actions, target: ", points.shape, actions.shape, target.shape)
             optimizer.zero_grad()
 
             points = points.data.numpy()
@@ -183,11 +258,16 @@ def main(args):
             points = points.transpose(2, 1)
 
             if not args.use_cpu:
-                points, target = points.cuda(), target.cuda()
+                points, actions, target = points.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
 
-            pred, trans_feat = classifier(points)
-            loss = criterion(pred, target.long(), trans_feat)
+            pred, trans_feat = classifier(points, actions)
+            # loss = criterion(pred, target.long(), trans_feat)
+            loss = criterion(pred, target, trans_feat)
             pred_choice = pred.data.max(1)[1]
+            
+            probabilities = torch.sigmoid(pred)
+            # Convert probabilities to binary predictions (0 or 1)
+            pred_choice = (probabilities >= 0.5).float()
 
             correct = pred_choice.eq(target.long().data).cpu().sum()
             mean_correct.append(correct.item() / float(points.size()[0]))
@@ -195,20 +275,23 @@ def main(args):
             optimizer.step()
             global_step += 1
 
+            wandb.log({"train/loss": loss})
+            wandb.log({"train/correct": correct})
+
         train_instance_acc = np.mean(mean_correct)
         log_string('Train Instance Accuracy: %f' % train_instance_acc)
 
         with torch.no_grad():
-            instance_acc, class_acc = test(classifier.eval(), testDataLoader, num_class=num_class)
+            instance_acc = test(classifier.eval(), testDataLoader, num_class=num_class)
 
             if (instance_acc >= best_instance_acc):
                 best_instance_acc = instance_acc
                 best_epoch = epoch + 1
 
-            if (class_acc >= best_class_acc):
-                best_class_acc = class_acc
-            log_string('Test Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
-            log_string('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc, best_class_acc))
+            # if (class_acc >= best_class_acc):
+            #     best_class_acc = class_acc
+            # log_string('Test Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
+            # log_string('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc, best_class_acc))
 
             if (instance_acc >= best_instance_acc):
                 logger.info('Save model...')
@@ -217,7 +300,7 @@ def main(args):
                 state = {
                     'epoch': best_epoch,
                     'instance_acc': instance_acc,
-                    'class_acc': class_acc,
+                    # 'class_acc': class_acc,
                     'model_state_dict': classifier.state_dict(),
                     'optimizer_state_dict': optimizer.state_dict(),
                 }
