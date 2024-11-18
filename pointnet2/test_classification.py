@@ -46,7 +46,7 @@ def test(model, loader, num_class=40, vote_num=1):
 
     for j, batch in tqdm(enumerate(loader), total=len(loader)):
         points, actions, target = batch['points'], batch['actions'], batch['contacts']
-        breakpoint()
+        # breakpoint()
         
         # remove later
         votes = 10
@@ -83,7 +83,7 @@ def test(model, loader, num_class=40, vote_num=1):
             preds.append(pred)
             probabilities = torch.sigmoid(pred)
             # Changed from 0.5
-            pred_choice = (probabilities >= 0.3).float()
+            pred_choice = (probabilities >= 0.5).float()
             pred_choices.append(pred_choice.item())
     
 
@@ -156,7 +156,7 @@ def main(args):
     # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
     test_dataset = SequenceDataset(
-        hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data_test2/dataset.hdf5',
+        hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data_test/dataset.hdf5',
         obs_keys=('pcd',),  # observations we want to appear in batches
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches

@@ -252,8 +252,12 @@ def main(args):
 
             points = points.data.numpy()
             points = provider.random_point_dropout(points)
-            points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
+            # Commented by Arpit
+            # points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
+            # points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
+            # Added by Arpit
+            points[:, :, 0:3] = provider.jitter_point_cloud(points[:, :, 0:3], sigma=0.001, clip=0.005)
+
             points = torch.Tensor(points)
             points = points.transpose(2, 1)
 
@@ -292,6 +296,19 @@ def main(args):
             #     best_class_acc = class_acc
             # log_string('Test Instance Accuracy: %f, Class Accuracy: %f' % (instance_acc, class_acc))
             # log_string('Best Instance Accuracy: %f, Class Accuracy: %f' % (best_instance_acc, best_class_acc))
+            # Save model every 20 epochs
+            if epoch % 20 == 0:
+                logger.info('Saving periodic checkpoint...')
+                savepath = str(checkpoints_dir) + f'/model_epoch_{epoch}.pth'
+                log_string('Saving at %s' % savepath)
+                state = {
+                    'epoch': epoch,
+                    'instance_acc': instance_acc,
+                    'model_state_dict': classifier.state_dict(),
+                    'optimizer_state_dict': optimizer.state_dict(),
+                }
+                torch.save(state, savepath)
+
 
             if (instance_acc >= best_instance_acc):
                 logger.info('Save model...')

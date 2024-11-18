@@ -330,6 +330,17 @@ class SequenceDataset(torch.utils.data.Dataset):
         """
         return self.get_item(index)
     
+    def pc_normalize(self, pc, action):
+        # breakpoint()
+        centroid = np.mean(pc, axis=0)
+        pc = pc - centroid
+        m = np.max(np.sqrt(np.sum(pc ** 2, axis=1)))
+        pc = pc / m
+
+        action[3:6] = (action[3:6] - centroid) / m
+
+        return pc, action
+    
     def get_item(self, index):
         """
         Main implementation of getitem when not using cache.
@@ -351,7 +362,7 @@ class SequenceDataset(torch.utils.data.Dataset):
             keys=self.dataset_keys,
             seq_length=self.seq_length
         )
-        # pdb.set_trace()
+        # breakpoint()
 
         meta["obs"] = self.get_obs_sequence_from_demo(
             demo_id,
@@ -361,6 +372,11 @@ class SequenceDataset(torch.utils.data.Dataset):
             prefix="obs",
             obs_info_keys=self.obs_info_keys
         )
+
+        # Normalize pcd points and the actions
+        # breakpoint()
+        meta["obs"]["pcd_points"][0], meta["actions"][0] = self.pc_normalize(meta["obs"]["pcd_points"][0], meta["actions"][0])
+        # breakpoint()
 
         #TODO: commented out resize but bring it back
         # meta["obs"] = self.resize_image_observations(meta["obs"], max=255)
