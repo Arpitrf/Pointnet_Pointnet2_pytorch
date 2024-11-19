@@ -102,7 +102,7 @@ def pad_sequence(seq, padding, batched=False, pad_same=True, pad_values=None):
         }
     )
 
-def generate_point_cloud_from_depth(depth_image, intrinsic_matrix, mask):
+def generate_point_cloud_from_depth(depth_image, intrinsic_matrix, mask, extrinsic_matrix):
     """
     Generate a point cloud from a depth image and intrinsic matrix.
     
@@ -168,6 +168,14 @@ def generate_point_cloud_from_depth(depth_image, intrinsic_matrix, mask):
     # remove later
     # points = points[points[:, 2] > 0.5]
     # print("points: ", points[:, 2])
+
+    # transform points to world frame
+    # make points homogeneous
+    points = np.hstack((points, np.ones((points.shape[0], 1))))
+    points = extrinsic_matrix @ points.T
+    points = points.T
+    # remove homogeneous coordinate
+    points = points[:, :3]
 
     # Create an Open3D point cloud object
     point_cloud = o3d.geometry.PointCloud()

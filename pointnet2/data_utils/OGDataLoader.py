@@ -92,7 +92,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         self.total_num_sequences = 0
         for ep in self.demos:
 
-            # Skip episodes with only one entry for contacts (only the starting timestep)
+            # Skip episodes with only one entry for contacts (only the starting timestep) i.e. this datapoint has no label
             if len(self.hdf5_file["data/{}".format(ep)]['extras']['contacts']) == 1:
                 continue
 
@@ -140,7 +140,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         #         print(reconstructed_data)
         return reconstructed_data
     
-    def get_seg_instance_id_info(self, ep):
+    def get_seg_semantic_info(self, ep):
         # Basically dealing with HDF5 limitation: handling inconsistent length arrays in observations_info/seg_instance_id
         if 'seg_semantic_strings' in self.hdf5_file[f'data/{ep}/observations_info'].keys():
             seg_semantic_strings = np.array(self.hdf5_file["data/{}/observations_info/seg_semantic_strings".format(ep)])
@@ -155,6 +155,21 @@ class SequenceDataset(torch.utils.data.Dataset):
             # print("222: ", seg_semantic.shape)
         return seg_semantic
     
+    def get_seg_instance_info(self, ep):
+        # Basically dealing with HDF5 limitation: handling inconsistent length arrays in observations_info/seg_instance_id
+        if 'seg_instance_strings' in self.hdf5_file[f'data/{ep}/observations_info'].keys():
+            seg_instance_strings = np.array(self.hdf5_file["data/{}/observations_info/seg_instance_strings".format(ep)])
+            seg_instance_shapes = np.array(self.hdf5_file["data/{}/observations_info/seg_instance_shapes".format(ep)])
+            seg_instance = self.extract_observations_info_from_hdf5(obs_info_strings=seg_instance_strings, 
+                                                                        obs_info_shapes=seg_instance_shapes)
+            # print("111: ", seg_instance.shape)
+        else:
+            hd5key = "data/{}/observations_info/seg_instance".format(ep)
+            # seg_instance = hdf5_file[hd5key]
+            seg_instance = np.array(self.hdf5_file[hd5key]).astype(str)
+            # print("222: ", seg_instance.shape)
+        return seg_instance
+    
     def get_pcd(self, ep):
         depth = self.hdf5_file[f"data/{ep}/observations/depth"]
         intr =  np.array([
@@ -162,11 +177,15 @@ class SequenceDataset(torch.utils.data.Dataset):
             [  0.0000, 103.8416,  64.0000],
             [  0.0000,   0.0000,   1.0000]])
         
-        # print("len(depth): ", len(depth))
+        
+        extrinsic_matrix = np.array(self.hdf5_file["data"][ep]["proprioceptions"]["extrinsic_matrix"])[0]
 
         # creating mask to remove floors
         seg_semantic = self.hdf5_file[f'data/{ep}/observations/seg_semantic']
-        seg_semantic_info = self.get_seg_instance_id_info(ep)
+        seg_instance = self.hdf5_file[f'data/{ep}/observations/seg_instance']
+
+        # seg_semantic_info = self.get_seg_semantic_info(ep)
+        seg_instance_info = self.get_seg_instance_info(ep)
         # seq_num = 0
 
         pcd_points = []
@@ -176,19 +195,22 @@ class SequenceDataset(torch.utils.data.Dataset):
 
             # creating mask to remove floors
             floor_id = -1
-            for row in seg_semantic_info[seq_num]:
+            # for row in seg_semantic_info[seq_num]:
+            for row in seg_instance_info[seq_num]:
                 sem_id, class_name = int(row[0]), row[1]
-                if class_name == 'floors':
+                # if class_name == 'floors':
+                if class_name == 'groundPlane':
                     floor_id = sem_id
                     break
 
             if floor_id != -1:
                 mask = np.zeros_like(depth[seq_num])
-                mask[seg_semantic[seq_num] != floor_id] = 1
+                # mask[seg_semantic[seq_num] != floor_id] = 1
+                mask[seg_instance[seq_num] != floor_id] = 1
             else:
                 mask = np.ones_like(depth[seq_num])
 
-            o3d_pcd = generate_point_cloud_from_depth(depth[seq_num], intr, mask)
+            o3d_pcd = generate_point_cloud_from_depth(depth[seq_num], intr, mask, extrinsic_matrix)
             pcd_points.append(np.asarray(o3d_pcd.points))
             pcd_colors.append(np.asarray(o3d_pcd.colors))
             pcd_normals.append(np.asarray(o3d_pcd.normals))
@@ -206,6 +228,15 @@ class SequenceDataset(torch.utils.data.Dataset):
         """
         if key == 'actions':
             hd5key = "data/{}/{}/{}".format(ep, key, key)
+        # In case we want to add eef pose to the action vector
+        # if key == 'actions':
+        #     actions = np.array(self.hdf5_file[f"data/{ep}/{key}/{key}"])
+        #     ee_pos = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_pos"])[:-1]
+        #     ee_quat = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_orn"])[:-1]
+        #     ee_orn = R.from_quat(ee_quat).as_rotvec()
+        #     ret = np.concatenate((actions, ee_pos, ee_orn), axis=1)
+        #     # breakpoint()
+        #     return ret
         elif key == 'obs/rgb':
             pass
         # TODO: Do the depth -> pcd transformation during data collection
@@ -214,12 +245,12 @@ class SequenceDataset(torch.utils.data.Dataset):
         elif key == 'grasped':
             hd5key = "data/{}/extras/grasps".format(ep)
             ret = np.array(self.hdf5_file[hd5key])
-            ret = np.append(ret, ret[-1])
+            # ret = np.append(ret, ret[-1])
             return ret
         elif key == 'contacts':
             hd5key = "data/{}/extras/{}".format(ep, key)
             ret = np.array(self.hdf5_file[hd5key])
-            ret = np.append(ret, ret[-1])
+            # ret = np.append(ret, ret[-1])
             return ret
 
         ret = self.hdf5_file[hd5key]
@@ -375,7 +406,7 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         # Normalize pcd points and the actions
         # breakpoint()
-        meta["obs"]["pcd_points"][0], meta["actions"][0] = self.pc_normalize(meta["obs"]["pcd_points"][0], meta["actions"][0])
+        # meta["obs"]["pcd_points"][0], meta["actions"][0] = self.pc_normalize(meta["obs"]["pcd_points"][0], meta["actions"][0])
         # breakpoint()
 
         #TODO: commented out resize but bring it back

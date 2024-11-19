@@ -141,9 +141,10 @@ def main(args):
     # test_dataset = ModelNetDataLoader(root=data_path, args=args, split='test', process_data=args.process_data)
     # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
+    hdf5_path = '/home/arpit/projects/OmniGibson/place_in_shelf_data_low_noise/dataset.hdf5'
     # loading custom dataset
     train_dataset = SequenceDataset(
-        hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data/dataset.hdf5',
+        hdf5_path=hdf5_path,
         obs_keys=('pcd',),  # observations we want to appear in batches
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
@@ -168,7 +169,7 @@ def main(args):
     )
 
     test_dataset = SequenceDataset(
-        hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data/dataset.hdf5',
+        hdf5_path=hdf5_path,
         obs_keys=('pcd',),  # observations we want to appear in batches
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
