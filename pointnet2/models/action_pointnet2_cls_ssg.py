@@ -22,8 +22,8 @@ class get_model(nn.Module):
 
         # action head
         # 10 for only actions and 16 for actions and eef pose
-        self.action_fc1 = nn.Linear(10, 64)
-        # self.action_fc1 = nn.Linear(16, 64)
+        # self.action_fc1 = nn.Linear(10, 64)
+        self.action_fc1 = nn.Linear(16, 64)
 
         self.action_bn1 = nn.BatchNorm1d(64)
         self.action_drop1 = nn.Dropout(0.2)

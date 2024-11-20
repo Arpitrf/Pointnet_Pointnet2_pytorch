@@ -7,6 +7,7 @@ import numpy as np
 
 from data_utils.utils import pad_sequence, generate_point_cloud_from_depth
 from torch.utils.data.dataloader import default_collate
+from scipy.spatial.transform import Rotation as R
 
 class SequenceDataset(torch.utils.data.Dataset):
     def __init__(
@@ -226,17 +227,17 @@ class SequenceDataset(torch.utils.data.Dataset):
         Helper utility to get a dataset for a specific demonstration.
         Takes into account whether the dataset has been loaded into memory.
         """
-        if key == 'actions':
-            hd5key = "data/{}/{}/{}".format(ep, key, key)
-        # In case we want to add eef pose to the action vector
         # if key == 'actions':
-        #     actions = np.array(self.hdf5_file[f"data/{ep}/{key}/{key}"])
-        #     ee_pos = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_pos"])[:-1]
-        #     ee_quat = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_orn"])[:-1]
-        #     ee_orn = R.from_quat(ee_quat).as_rotvec()
-        #     ret = np.concatenate((actions, ee_pos, ee_orn), axis=1)
-        #     # breakpoint()
-        #     return ret
+        #     hd5key = "data/{}/{}/{}".format(ep, key, key)
+        # In case we want to add eef pose to the action vector
+        if key == 'actions':
+            actions = np.array(self.hdf5_file[f"data/{ep}/{key}/{key}"])
+            ee_pos = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_pos"])[:-1]
+            ee_quat = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_orn"])[:-1]
+            ee_orn = R.from_quat(ee_quat).as_rotvec()
+            ret = np.concatenate((actions, ee_pos, ee_orn), axis=1)
+            # breakpoint()
+            return ret
         elif key == 'obs/rgb':
             pass
         # TODO: Do the depth -> pcd transformation during data collection

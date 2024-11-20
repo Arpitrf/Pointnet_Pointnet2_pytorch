@@ -193,7 +193,6 @@ def main(args):
         collate_fn=prepare_data,
     )
 
-
     '''MODEL LOADING'''
     num_class = args.num_category
     print("args.model: ", args.model)
