@@ -60,7 +60,8 @@ def test(model, loader, num_class=40):
     for j, batch in tqdm(enumerate(loader), total=len(loader)):
         # points, target = batch 
         # actions = torch.tensor([])
-        points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
+        # points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
+        points, actions, target = batch['points'], batch['actions'], batch['grasps'] 
 
         if not args.use_cpu:
             points, actions, target = points.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
@@ -141,7 +142,7 @@ def main(args):
     # test_dataset = ModelNetDataLoader(root=data_path, args=args, split='test', process_data=args.process_data)
     # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
-    hdf5_path = '/home/arpit/projects/OmniGibson/place_in_shelf_data_low_noise/dataset.hdf5'
+    hdf5_path = '/home/arpit/projects/Pointnet_Pointnet2_pytorch/open_drawer/dataset.hdf5'
     # loading custom dataset
     train_dataset = SequenceDataset(
         hdf5_path=hdf5_path,
@@ -149,7 +150,7 @@ def main(args):
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
             "actions",
-            "grasped",
+            "grasps",
             "contacts"
         ),
         seq_length=1,  # length-10 temporal sequences
@@ -158,13 +159,14 @@ def main(args):
         filter_by_attribute='train',  # filter either train or validation data
         image_size=[64, 64],
     )
+    # train_dataset.get_target_distribution()
     trainDataLoader = torch.utils.data.DataLoader(
         dataset=train_dataset,
         sampler=None,  # no custom sampling logic (uniform sampling)
         batch_size=args.batch_size,
         shuffle=True, 
         num_workers=10,  
-        # drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
+        drop_last=True,  # don't provide last batch in dataset pass if it's less than 100 in size
         collate_fn=prepare_data,
     )
 
@@ -174,7 +176,7 @@ def main(args):
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
             "actions",
-            "grasped",
+            "grasps",
             "contacts"
         ),
         seq_length=1,  # length-10 temporal sequences
@@ -202,7 +204,7 @@ def main(args):
     shutil.copy('./train_classification.py', str(exp_dir))
 
     classifier = model.get_model(num_class, normal_channel=args.use_normals)
-    criterion = model.get_loss()
+    criterion = model.get_loss(train_dataset.num_zeros, train_dataset.num_ones)
     classifier.apply(inplace_relu)
 
     if not args.use_cpu:
@@ -246,7 +248,8 @@ def main(args):
         for batch_id, batch in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             # points, target = batch 
             # actions = torch.tensor([])
-            points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
+            # points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
+            points, actions, target = batch['points'], batch['actions'], batch['grasps'] 
             # print("point, actions, target: ", points.shape, actions.shape, target.shape)
             optimizer.zero_grad()
 

@@ -47,6 +47,11 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         self.counter = 0
 
+        self.num_zeros = 0
+        self.num_ones = 0
+        # self.get_target_distribution(target_key="contacts")
+        self.get_target_distribution(target_key="grasps")
+
         # self.obs_normalization_stats = None
         # if self.hdf5_normalize_obs:
         #     self.obs_normalization_stats = self.normalize_obs()
@@ -60,6 +65,24 @@ class SequenceDataset(torch.utils.data.Dataset):
             self._hdf5_file = h5py.File(self.hdf5_path, 'r')
         return self._hdf5_file
     
+    def get_target_distribution(self, target_key):
+        """
+        Calculate the distribution of contact labels (0s and 1s) across all demos.
+        
+        Returns:
+            tuple: (num_zeros, num_ones) - Count of 0s and 1s in the dataset
+        """
+        
+        for demo_id in self.demos:
+            # Skip episodes with only one entry for contacts
+            if len(self.hdf5_file[f"data/{demo_id}/extras/{target_key}"]) == 1:
+                continue
+                
+            target = np.array(self.hdf5_file[f"data/{demo_id}/extras/{target_key}"])
+            # Count from index 1 onwards since we use the next timestep as label
+            self.num_zeros += np.sum(target[1:] == 0)
+            self.num_ones += np.sum(target[1:] == 1)
+                    
     def load_demo_info(self, filter_by_attribute=None, demos=None):
         """
         Args:
@@ -122,6 +145,8 @@ class SequenceDataset(torch.utils.data.Dataset):
             for _ in range(num_sequences):
                 self._index_to_demo_id[self.total_num_sequences] = ep
                 self.total_num_sequences += 1
+
+    
 
     def extract_observations_info_from_hdf5(self, obs_info_strings, obs_info_shapes):
         # Reconstruct original structure
@@ -227,23 +252,23 @@ class SequenceDataset(torch.utils.data.Dataset):
         Helper utility to get a dataset for a specific demonstration.
         Takes into account whether the dataset has been loaded into memory.
         """
-        # if key == 'actions':
-        #     hd5key = "data/{}/{}/{}".format(ep, key, key)
-        # In case we want to add eef pose to the action vector
         if key == 'actions':
-            actions = np.array(self.hdf5_file[f"data/{ep}/{key}/{key}"])
-            ee_pos = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_pos"])[:-1]
-            ee_quat = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_orn"])[:-1]
-            ee_orn = R.from_quat(ee_quat).as_rotvec()
-            ret = np.concatenate((actions, ee_pos, ee_orn), axis=1)
-            # breakpoint()
-            return ret
+            hd5key = "data/{}/{}/{}".format(ep, key, key)
+        # In case we want to add eef pose to the action vector
+        # if key == 'actions':
+        #     actions = np.array(self.hdf5_file[f"data/{ep}/{key}/{key}"])
+        #     ee_pos = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_pos"])[:-1]
+        #     ee_quat = np.array(self.hdf5_file[f"data/{ep}/proprioceptions/right_eef_orn"])[:-1]
+        #     ee_orn = R.from_quat(ee_quat).as_rotvec()
+        #     ret = np.concatenate((actions, ee_pos, ee_orn), axis=1)
+        #     # breakpoint()
+        #     return ret
         elif key == 'obs/rgb':
             pass
         # TODO: Do the depth -> pcd transformation during data collection
         elif key == 'obs/pcd':
             return self.get_pcd(ep)            
-        elif key == 'grasped':
+        elif key == 'grasps':
             hd5key = "data/{}/extras/grasps".format(ep)
             ret = np.array(self.hdf5_file[hd5key])
             # ret = np.append(ret, ret[-1])
@@ -300,12 +325,12 @@ class SequenceDataset(torch.utils.data.Dataset):
                 seq['obs/pcd_points'] = np.array(data["points"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_colors'] = np.array(data["colors"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_normals'] = np.array(data["normals"][seq_begin_index: seq_end_index]) 
-            elif k == 'contacts' or k =='grasped':
+            elif k == 'contacts' or k =='grasps':
                 seq[k] = data[seq_begin_index+1: seq_end_index+1]
             else:
                 seq[k] = data[seq_begin_index: seq_end_index]
-            # change grasped from bool to float
-            if k == 'grasped' or k == 'contacts':
+            # change grasps from bool to float
+            if k == 'grasps' or k == 'contacts':
                 seq[k] = seq[k].astype(float)
 
             # print("seq[k]: ", seq[k].shape)
@@ -433,7 +458,8 @@ def prepare_data(input_batch):
         data_dict = {
                 "points": xs["obs"]["pcd_points"][:, 0],
                 "actions": xs["actions"][:, 0], 
-                "contacts": xs["contacts"]
+                "contacts": xs["contacts"],
+                "grasps": xs["grasps"]
             }
         
         return data_dict
@@ -520,9 +546,9 @@ def prepare_data(input_batch):
         # #     data_dict["video"] = data_dict["video"] / 255.0
 
         # # added by Arpit
-        # xs["grasped"] = xs["grasped"].unsqueeze(2)
-        # # print("xs_grasped.shape: ", type(xs['grasped']), xs['grasped'].shape)
-        # data_dict['grasped'] = xs["grasped"]
+        # xs["grasps"] = xs["grasps"].unsqueeze(2)
+        # # print("xs_grasps.shape: ", type(xs['grasps']), xs['grasps'].shape)
+        # data_dict['grasps'] = xs["grasps"]
 
         # # added by Arpit
         # # data_dict['obs_info'] = xs["obs_info"]

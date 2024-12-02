@@ -22,8 +22,8 @@ class get_model(nn.Module):
 
         # action head
         # 10 for only actions and 16 for actions and eef pose
-        # self.action_fc1 = nn.Linear(10, 64)
-        self.action_fc1 = nn.Linear(16, 64)
+        self.action_fc1 = nn.Linear(10, 64)
+        # self.action_fc1 = nn.Linear(16, 64)
 
         self.action_bn1 = nn.BatchNorm1d(64)
         self.action_drop1 = nn.Dropout(0.2)
@@ -76,9 +76,10 @@ class get_model(nn.Module):
 
 
 class get_loss(nn.Module):
-    def __init__(self):
+    def __init__(self, num_zeros, num_ones):
         super(get_loss, self).__init__()
-        self.criterion = nn.BCEWithLogitsLoss()
+        weight = num_zeros / num_ones
+        self.criterion = nn.BCEWithLogitsLoss(pos_weight=torch.tensor(weight))
 
 
     def forward(self, pred, target, trans_feat):

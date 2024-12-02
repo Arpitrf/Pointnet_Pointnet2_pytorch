@@ -4,12 +4,12 @@ from data_utils.OGDataLoader import SequenceDataset, prepare_data
 
 
 dataset = SequenceDataset(
-    hdf5_path='/home/arpit/test_projects/OmniGibson/place_in_shelf_data/dataset.hdf5',
+    hdf5_path='/home/arpit/projects/Pointnet_Pointnet2_pytorch/open_drawer/dataset.hdf5',
     obs_keys=('pcd',),  # observations we want to appear in batches
     # obs_info_keys=('seg_instance_id_info',),
     dataset_keys=(  # can optionally specify more keys here if they should appear in batches
         "actions",
-        "grasped",
+        "grasps",
         "contacts"
     ),
     seq_length=1,  # length-10 temporal sequences
@@ -24,7 +24,7 @@ print("dataset.n_demos: ", dataset.n_demos)
 
 datapoint = dataset[10]
 print("actions: ", datapoint['actions'].shape)
-print("grasped: ", datapoint['grasped'].shape)
+print("grasps: ", datapoint['grasps'].shape)
 print("contact: ", datapoint['contacts'].shape)
 print("keys: ", datapoint['obs'].keys())
 print("pcd_points: ", datapoint['obs']['pcd_points'].shape)
@@ -43,4 +43,4 @@ trainDataLoader = torch.utils.data.DataLoader(
 
 batch = next(iter(trainDataLoader))
 print("batch: ", batch.keys())
-print("batch[actions], batch[points], batch[contacts]: ", batch['actions'].shape, batch['points'].shape, batch['contacts'].shape)
+print("batch[actions], batch[points], batch[contacts], batch[grasps]: ", batch['actions'].shape, batch['points'].shape, batch['contacts'].shape, batch['grasps'].shape)

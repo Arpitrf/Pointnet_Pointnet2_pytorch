@@ -118,6 +118,7 @@ log/
 data/
 wandb/
 place_in_shelf_data*/
+open_drawer/
 
 # hdf5 files
 *.hdf5
