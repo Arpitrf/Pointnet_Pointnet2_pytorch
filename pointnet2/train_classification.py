@@ -33,7 +33,7 @@ def parse_args():
     parser.add_argument('--batch_size', type=int, default=24, help='batch size in training')
     parser.add_argument('--model', default='pointnet_cls', help='model name [default: pointnet_cls]')
     parser.add_argument('--num_category', default=1, type=int, choices=[10, 40],  help='training on ModelNet10/40')
-    parser.add_argument('--epoch', default=200, type=int, help='number of epoch in training')
+    parser.add_argument('--epoch', default=300, type=int, help='number of epoch in training')
     parser.add_argument('--learning_rate', default=0.001, type=float, help='learning rate in training')
     parser.add_argument('--num_point', type=int, default=1024, help='Point Number')
     parser.add_argument('--optimizer', type=str, default='Adam', help='optimizer for training')
@@ -60,8 +60,7 @@ def test(model, loader, num_class=40):
     for j, batch in tqdm(enumerate(loader), total=len(loader)):
         # points, target = batch 
         # actions = torch.tensor([])
-        # points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
-        points, actions, target = batch['points'], batch['actions'], batch['grasps'] 
+        points, actions, target = batch['points'], batch['actions'], batch['labels'] 
 
         if not args.use_cpu:
             points, actions, target = points.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
@@ -142,7 +141,9 @@ def main(args):
     # test_dataset = ModelNetDataLoader(root=data_path, args=args, split='test', process_data=args.process_data)
     # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
-    hdf5_path = '/home/arpit/projects/Pointnet_Pointnet2_pytorch/open_drawer/dataset.hdf5'
+    # TODO: Always change this
+    hdf5_path = "/home/arpit/projects/Pointnet_Pointnet2_pytorch/open_cabinet/dataset.hdf5"
+    target_key = "grasp_label"
     # loading custom dataset
     train_dataset = SequenceDataset(
         hdf5_path=hdf5_path,
@@ -150,9 +151,9 @@ def main(args):
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
             "actions",
-            "grasps",
-            "contacts"
+            target_key,
         ),
+        target_key = target_key, 
         seq_length=1,  # length-10 temporal sequences
         pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
         hdf5_normalize_obs=False,
@@ -176,9 +177,9 @@ def main(args):
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
             "actions",
-            "grasps",
-            "contacts"
+            target_key,
         ),
+        target_key=target_key,
         seq_length=1,  # length-10 temporal sequences
         pad_seq_length=True,  # pad last obs per trajectory to ensure all sequences are sampled
         hdf5_normalize_obs=False,
@@ -248,8 +249,7 @@ def main(args):
         for batch_id, batch in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             # points, target = batch 
             # actions = torch.tensor([])
-            # points, actions, target = batch['points'], batch['actions'], batch['contacts'] 
-            points, actions, target = batch['points'], batch['actions'], batch['grasps'] 
+            points, actions, target = batch['points'], batch['actions'], batch['labels'] 
             # print("point, actions, target: ", points.shape, actions.shape, target.shape)
             optimizer.zero_grad()
 

@@ -4,6 +4,7 @@ import h5py
 import pdb
 
 import numpy as np
+import open3d as o3d
 
 from data_utils.utils import pad_sequence, generate_point_cloud_from_depth
 from torch.utils.data.dataloader import default_collate
@@ -15,6 +16,7 @@ class SequenceDataset(torch.utils.data.Dataset):
         hdf5_path,
         obs_keys,
         dataset_keys,
+        target_key,
         seq_length=1,
         pad_seq_length=True,
         filter_by_attribute=None,
@@ -49,8 +51,7 @@ class SequenceDataset(torch.utils.data.Dataset):
 
         self.num_zeros = 0
         self.num_ones = 0
-        # self.get_target_distribution(target_key="contacts")
-        self.get_target_distribution(target_key="grasps")
+        self.get_target_distribution(target_key=target_key)
 
         # self.obs_normalization_stats = None
         # if self.hdf5_normalize_obs:
@@ -237,6 +238,8 @@ class SequenceDataset(torch.utils.data.Dataset):
                 mask = np.ones_like(depth[seq_num])
 
             o3d_pcd = generate_point_cloud_from_depth(depth[seq_num], intr, mask, extrinsic_matrix)
+            # To verify
+            # o3d.io.write_point_cloud(f"pcd_{seq_num}.ply", o3d_pcd)
             pcd_points.append(np.asarray(o3d_pcd.points))
             pcd_colors.append(np.asarray(o3d_pcd.colors))
             pcd_normals.append(np.asarray(o3d_pcd.normals))
@@ -270,6 +273,16 @@ class SequenceDataset(torch.utils.data.Dataset):
             return self.get_pcd(ep)            
         elif key == 'grasps':
             hd5key = "data/{}/extras/grasps".format(ep)
+            ret = np.array(self.hdf5_file[hd5key])
+            # ret = np.append(ret, ret[-1])
+            return ret
+        elif key == 'grasp_label':
+            hd5key = "data/{}/extras/grasp_label".format(ep)
+            ret = np.array(self.hdf5_file[hd5key])
+            # ret = np.append(ret, ret[-1])
+            return ret
+        elif key == 'ft_label':
+            hd5key = "data/{}/extras/ft_label".format(ep)
             ret = np.array(self.hdf5_file[hd5key])
             # ret = np.append(ret, ret[-1])
             return ret
@@ -325,13 +338,13 @@ class SequenceDataset(torch.utils.data.Dataset):
                 seq['obs/pcd_points'] = np.array(data["points"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_colors'] = np.array(data["colors"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_normals'] = np.array(data["normals"][seq_begin_index: seq_end_index]) 
-            elif k == 'contacts' or k =='grasps':
-                seq[k] = data[seq_begin_index+1: seq_end_index+1]
+            elif k == 'contacts' or k =='grasps' or k == 'grasp_label' or k == "ft_label":
+                seq["labels"] = data[seq_begin_index+1: seq_end_index+1]
             else:
                 seq[k] = data[seq_begin_index: seq_end_index]
-            # change grasps from bool to float
-            if k == 'grasps' or k == 'contacts':
-                seq[k] = seq[k].astype(float)
+            # change label from bool to float
+            if k == 'grasps' or k == 'contacts' or k == 'grasp_label' or k == "ft_label":
+                seq["labels"] = seq["labels"].astype(float)
 
             # print("seq[k]: ", seq[k].shape)
 
@@ -458,8 +471,9 @@ def prepare_data(input_batch):
         data_dict = {
                 "points": xs["obs"]["pcd_points"][:, 0],
                 "actions": xs["actions"][:, 0], 
-                "contacts": xs["contacts"],
-                "grasps": xs["grasps"]
+                # "contacts": xs["contacts"],
+                # "grasps": xs["grasps"],
+                "labels": xs["labels"]
             }
         
         return data_dict
