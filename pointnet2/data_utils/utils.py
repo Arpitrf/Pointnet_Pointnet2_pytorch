@@ -134,6 +134,10 @@ def generate_point_cloud_from_depth(depth_image, intrinsic_matrix, mask, extrins
     v_valid = v_flat[valid_indices]
     depth_valid = depth_flat[valid_indices]
 
+    # fix to handle inf depth values (which leads to nan)
+    depth_valid[depth_valid == np.inf] = 3.0
+    # print("depth_valid: ", depth_valid)
+
     # Generate normalized pixel coordinates in homogeneous form
     pixel_coords = np.vstack((u_valid, v_valid, np.ones_like(u_valid)))
 

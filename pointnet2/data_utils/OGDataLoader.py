@@ -121,6 +121,11 @@ class SequenceDataset(torch.utils.data.Dataset):
             if len(self.hdf5_file["data/{}".format(ep)]['extras']['contacts']) == 1:
                 continue
 
+            # Skip episodes where robot went crazy (for now I am chcking this by checking if camera pos is weird)
+            camera_pos = np.array(self.hdf5_file[f'data/{ep}/proprioceptions/camera_qpos'])[0][1]
+            if camera_pos > 0.3:
+                continue
+
             # demo_length = self.hdf5_file["data/{}".format(ep)].attrs["num_samples"]
             demo_length = len(self.hdf5_file["data/{}".format(ep)]['actions']['actions'])
             self._demo_id_to_start_indices[ep] = self.total_num_sequences
@@ -291,6 +296,11 @@ class SequenceDataset(torch.utils.data.Dataset):
             ret = np.array(self.hdf5_file[hd5key])
             # ret = np.append(ret, ret[-1])
             return ret
+        elif key == 'object_dropped':
+            hd5key = "data/{}/extras/object_dropped".format(ep)
+            ret = np.array(self.hdf5_file[hd5key])
+            # ret = np.append(ret, ret[-1])
+            return ret
 
         ret = self.hdf5_file[hd5key]
         return ret
@@ -338,12 +348,12 @@ class SequenceDataset(torch.utils.data.Dataset):
                 seq['obs/pcd_points'] = np.array(data["points"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_colors'] = np.array(data["colors"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_normals'] = np.array(data["normals"][seq_begin_index: seq_end_index]) 
-            elif k == 'contacts' or k =='grasps' or k == 'grasp_label' or k == "ft_label":
+            elif k == 'contacts' or k =='grasps' or k == 'grasp_label' or k == "ft_label" or k == 'object_dropped':
                 seq["labels"] = data[seq_begin_index+1: seq_end_index+1]
             else:
                 seq[k] = data[seq_begin_index: seq_end_index]
             # change label from bool to float
-            if k == 'grasps' or k == 'contacts' or k == 'grasp_label' or k == "ft_label":
+            if k == 'grasps' or k == 'contacts' or k == 'grasp_label' or k == "ft_label" or k == 'object_dropped':
                 seq["labels"] = seq["labels"].astype(float)
 
             # print("seq[k]: ", seq[k].shape)

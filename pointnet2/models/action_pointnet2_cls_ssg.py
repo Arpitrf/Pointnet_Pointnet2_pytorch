@@ -84,6 +84,9 @@ class get_loss(nn.Module):
 
     def forward(self, pred, target, trans_feat):
         # total_loss = F.nll_loss(pred, target)
+        # print("pred: ", pred)
+        # print("-----")
+        # print("target: ", target)
         total_loss = self.criterion(pred, target)
         # print("total_loss: ", total_loss)
 

@@ -117,9 +117,10 @@ dmypy.json
 log/
 data/
 wandb/
-place_in_shelf_data*/
+place*/
 open_drawer/
 open_cabinet/
+obj_dropping*
 
 # hdf5 files
 *.hdf5

@@ -142,8 +142,11 @@ def main(args):
     # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
     # TODO: Always change this
-    hdf5_path = "/home/arpit/projects/Pointnet_Pointnet2_pytorch/open_cabinet/dataset.hdf5"
-    target_key = "grasp_label"
+    hdf5_path = "/home/arpit/projects/Pointnet_Pointnet2_pytorch/place/dataset.hdf5"
+    # target_key = "grasp_label"
+    target_key = "contacts"
+    # target_key = "object_dropped"
+    
     # loading custom dataset
     train_dataset = SequenceDataset(
         hdf5_path=hdf5_path,
@@ -250,7 +253,12 @@ def main(args):
             # points, target = batch 
             # actions = torch.tensor([])
             points, actions, target = batch['points'], batch['actions'], batch['labels'] 
-            # print("point, actions, target: ", points.shape, actions.shape, target.shape)
+            
+            # for debugging nan values
+            # points_has_nan = torch.isnan(points).any().item()
+            # actions_has_nan = torch.isnan(actions).any().item()
+            # print("Contains NaN:", points_has_nan, actions_has_nan)
+            
             optimizer.zero_grad()
 
             points = points.data.numpy()
@@ -270,6 +278,7 @@ def main(args):
             pred, trans_feat = classifier(points, actions)
             # loss = criterion(pred, target.long(), trans_feat)
             loss = criterion(pred, target, trans_feat)
+            # print("loss: ", loss)
             pred_choice = pred.data.max(1)[1]
             
             probabilities = torch.sigmoid(pred)
