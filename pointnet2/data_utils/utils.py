@@ -186,3 +186,55 @@ def generate_point_cloud_from_depth(depth_image, intrinsic_matrix, mask, extrins
     point_cloud.points = o3d.utility.Vector3dVector(points)
 
     return point_cloud
+
+
+def obtain_mask_by_removing_floor(depth, seg_instance, seg_instance_info, seq_num):
+    # creating mask to remove floors
+    floor_id = -1
+    # for row in seg_semantic_info[seq_num]:
+    for row in seg_instance_info[seq_num]:
+        sem_id, class_name = int(row[0]), row[1]
+        # if class_name == 'floors':
+        if class_name == 'groundPlane':
+            floor_id = sem_id
+            break
+
+    if floor_id != -1:
+        mask = np.zeros_like(depth[seq_num])
+        # mask[seg_semantic[seq_num] != floor_id] = 1
+        mask[seg_instance[seq_num] != floor_id] = 1
+    else:
+        mask = np.ones_like(depth[seq_num])
+
+
+def obtain_mask_by_removing_ids(depth, seg_instance_id, seg_instance_id_info, seq_num, rgb=None):
+    import re
+    # class_names_to_remove = ["bottom_cabinet/base_link", "ground_plane"]
+    # remove_ids = []
+    # for row in seg_instance_id_info[seq_num]:
+    #     sem_id, class_name = int(row[0]), row[1]
+    #     if any(remove_name in class_name for remove_name in class_names_to_remove):
+    #         remove_ids.append(sem_id)
+
+    class_names_to_remove = [".*bottom_cabinet/base_link.*", ".*ground_plane.*", ".*controllable__tiago__robot_[^/]+/base_link.*"]
+    remove_ids = []
+    for row in seg_instance_id_info[seq_num]:
+        sem_id, class_name = int(row[0]), row[1]
+        for remove_name in class_names_to_remove:
+            if bool(re.match(remove_name, class_name)):
+                remove_ids.append(sem_id)
+
+    if len(remove_ids) != 0:
+        mask = np.ones_like(depth[seq_num])
+        mask[np.isin(seg_instance_id[seq_num], remove_ids)] = 0
+    else:
+        mask = np.ones_like(depth[seq_num])
+
+    # if rgb is not None:
+    #     fig, ax = plt.subplots(1, 2)
+    #     ax[0].imshow(rgb[seq_num])
+    #     ax[1].imshow(mask)
+    # else:
+    #     plt.imshow(mask)
+    # plt.show()
+    return mask

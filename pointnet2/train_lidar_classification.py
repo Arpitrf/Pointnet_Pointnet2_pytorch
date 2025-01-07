@@ -60,13 +60,13 @@ def test(model, loader, num_class=40):
     for j, batch in tqdm(enumerate(loader), total=len(loader)):
         # points, target = batch 
         # actions = torch.tensor([])
-        points, actions, target = batch['points'], batch['actions'], batch['labels'] 
+        scans, actions, target = batch['scans'], batch['actions'], batch['labels'] 
 
         if not args.use_cpu:
-            points, actions, target = points.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
+            scans, actions, target = scans.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
 
-        points = points.transpose(2, 1)
-        pred, _ = classifier(points, actions)
+        # points = points.transpose(2, 1)
+        pred = classifier(scans, actions)
         # pred_choice = pred.data.max(1)[1]
         probabilities = torch.sigmoid(pred)
         # Convert probabilities to binary predictions (0 or 1)
@@ -79,7 +79,7 @@ def test(model, loader, num_class=40):
         #     class_acc[cat, 1] += 1
 
         correct = pred_choice.eq(target.long().data).cpu().sum()
-        mean_correct.append(correct.item() / float(points.size()[0]))
+        mean_correct.append(correct.item() / float(scans.size()[0]))
 
     # class_acc[:, 2] = class_acc[:, 0] / class_acc[:, 1]
     # class_acc = np.mean(class_acc[:, 2])
@@ -142,17 +142,19 @@ def main(args):
     # testDataLoader = torch.utils.data.DataLoader(test_dataset, batch_size=args.batch_size, shuffle=False, num_workers=10)
 
     # TODO: Always change this
-    hdf5_path = "/home/arpit/projects/Pointnet_Pointnet2_pytorch/open_drawer/dataset.hdf5"
+    hdf5_path = "/home/arpit/projects/Pointnet_Pointnet2_pytorch/base_collision_detection/dataset.hdf5"
     # target_key = "grasp_label"
     # target_key = "grasps"
-    target_key = "ft_label"
+    # target_key = "ft_label"
     # target_key = "contacts"
     # target_key = "object_dropped"
-    
+    target_key = "base_collision"
+
     # loading custom dataset
     train_dataset = SequenceDataset(
         hdf5_path=hdf5_path,
-        obs_keys=('pcd',),  # observations we want to appear in batches
+        # obs_keys=('pcd',),  # observations we want to appear in batches
+        obs_keys=('scan',),  # observations we want to appear in batches
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
             "actions",
@@ -178,7 +180,7 @@ def main(args):
 
     test_dataset = SequenceDataset(
         hdf5_path=hdf5_path,
-        obs_keys=('pcd',),  # observations we want to appear in batches
+        obs_keys=('scan',),  # observations we want to appear in batches
         # obs_info_keys=('seg_instance_id_info',),
         dataset_keys=(  # can optionally specify more keys here if they should appear in batches
             "actions",
@@ -209,7 +211,7 @@ def main(args):
     shutil.copy('models/pointnet2_utils.py', str(exp_dir))
     shutil.copy('./train_classification.py', str(exp_dir))
 
-    classifier = model.get_model(num_class, normal_channel=args.use_normals)
+    classifier = model.get_model()
     criterion = model.get_loss(train_dataset.num_zeros, train_dataset.num_ones)
     classifier.apply(inplace_relu)
 
@@ -254,32 +256,27 @@ def main(args):
         for batch_id, batch in tqdm(enumerate(trainDataLoader, 0), total=len(trainDataLoader), smoothing=0.9):
             # points, target = batch 
             # actions = torch.tensor([])
-            points, actions, target = batch['points'], batch['actions'], batch['labels'] 
-            
-            # for debugging nan values
-            # points_has_nan = torch.isnan(points).any().item()
-            # actions_has_nan = torch.isnan(actions).any().item()
-            # print("Contains NaN:", points_has_nan, actions_has_nan)
-            
+            scans, actions, target = batch['scans'], batch['actions'], batch['labels'] 
+                        
             optimizer.zero_grad()
 
-            points = points.data.numpy()
-            points = provider.random_point_dropout(points)
-            # Commented by Arpit
-            # points[:, :, 0:3] = provider.random_scale_point_cloud(points[:, :, 0:3])
-            # points[:, :, 0:3] = provider.shift_point_cloud(points[:, :, 0:3])
-            # Added by Arpit
-            points[:, :, 0:3] = provider.jitter_point_cloud(points[:, :, 0:3], sigma=0.001, clip=0.005)
-
-            points = torch.Tensor(points)
-            points = points.transpose(2, 1)
+            # points = points.data.numpy()
+            # print("1 point.shape:", points.shape)
+            # points = provider.random_point_dropout(points)
+            # print("2 point.shape:", points.shape)
+            # # Added by Arpit
+            # points[:, :, 0:3] = provider.jitter_point_cloud(points[:, :, 0:3], sigma=0.001, clip=0.005)
+            # points = torch.Tensor(points)
+            # points = points.transpose(2, 1)
+            # print("points.shape: ", points.shape)
+            # breakpoint()
 
             if not args.use_cpu:
-                points, actions, target = points.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
+                scans, actions, target = scans.type(torch.FloatTensor).cuda(), actions.type(torch.FloatTensor).cuda(), target.type(torch.FloatTensor).cuda()
 
-            pred, trans_feat = classifier(points, actions)
+            pred = classifier(scans, actions)
             # loss = criterion(pred, target.long(), trans_feat)
-            loss = criterion(pred, target, trans_feat)
+            loss = criterion(pred, target)
             # print("loss: ", loss)
             pred_choice = pred.data.max(1)[1]
             
@@ -288,7 +285,8 @@ def main(args):
             pred_choice = (probabilities >= 0.5).float()
 
             correct = pred_choice.eq(target.long().data).cpu().sum()
-            mean_correct.append(correct.item() / float(points.size()[0]))
+            mean_correct.append(correct.item() / float(scans.size()[0]))
+            # breakpoint()
             loss.backward()
             optimizer.step()
             global_step += 1

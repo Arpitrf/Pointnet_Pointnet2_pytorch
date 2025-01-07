@@ -6,7 +6,7 @@ import pdb
 import numpy as np
 import open3d as o3d
 
-from data_utils.utils import pad_sequence, generate_point_cloud_from_depth
+from data_utils.utils import *
 from torch.utils.data.dataloader import default_collate
 from scipy.spatial.transform import Rotation as R
 
@@ -187,6 +187,21 @@ class SequenceDataset(torch.utils.data.Dataset):
             # print("222: ", seg_semantic.shape)
         return seg_semantic
     
+    def get_seg_instance_id_info(self, ep):
+        # Basically dealing with HDF5 limitation: handling inconsistent length arrays in observations_info/seg_instance_id_id
+        if 'seg_instance_id_strings' in self.hdf5_file[f'data/{ep}/observations_info'].keys():
+            seg_instance_id_strings = np.array(self.hdf5_file["data/{}/observations_info/seg_instance_id_strings".format(ep)])
+            seg_instance_id_shapes = np.array(self.hdf5_file["data/{}/observations_info/seg_instance_id_shapes".format(ep)])
+            seg_instance_id = self.extract_observations_info_from_hdf5(obs_info_strings=seg_instance_id_strings, 
+                                                                        obs_info_shapes=seg_instance_id_shapes)
+            # print("111: ", seg_instance_id.shape)
+        else:
+            hd5key = "data/{}/observations_info/seg_instance_id".format(ep)
+            # seg_instance_id = self.hdf5_file[hd5key]
+            seg_instance_id = np.array(self.hdf5_file[hd5key]).astype(str)
+            # print("222: ", seg_instance_id.shape)
+        return seg_instance_id
+    
     def get_seg_instance_info(self, ep):
         # Basically dealing with HDF5 limitation: handling inconsistent length arrays in observations_info/seg_instance_id
         if 'seg_instance_strings' in self.hdf5_file[f'data/{ep}/observations_info'].keys():
@@ -215,9 +230,11 @@ class SequenceDataset(torch.utils.data.Dataset):
         # creating mask to remove floors
         seg_semantic = self.hdf5_file[f'data/{ep}/observations/seg_semantic']
         seg_instance = self.hdf5_file[f'data/{ep}/observations/seg_instance']
+        seg_instance_id = self.hdf5_file[f'data/{ep}/observations/seg_instance_id']
 
         # seg_semantic_info = self.get_seg_semantic_info(ep)
         seg_instance_info = self.get_seg_instance_info(ep)
+        seg_instance_id_info = self.get_seg_instance_id_info(ep)
         # seq_num = 0
 
         pcd_points = []
@@ -225,22 +242,8 @@ class SequenceDataset(torch.utils.data.Dataset):
         pcd_colors = []
         for seq_num in range(len(depth)):
 
-            # creating mask to remove floors
-            floor_id = -1
-            # for row in seg_semantic_info[seq_num]:
-            for row in seg_instance_info[seq_num]:
-                sem_id, class_name = int(row[0]), row[1]
-                # if class_name == 'floors':
-                if class_name == 'groundPlane':
-                    floor_id = sem_id
-                    break
-
-            if floor_id != -1:
-                mask = np.zeros_like(depth[seq_num])
-                # mask[seg_semantic[seq_num] != floor_id] = 1
-                mask[seg_instance[seq_num] != floor_id] = 1
-            else:
-                mask = np.ones_like(depth[seq_num])
+            # mask = obtain_mask_by_removing_floor
+            mask = obtain_mask_by_removing_ids(depth, seg_instance_id, seg_instance_id_info, seq_num)
 
             o3d_pcd = generate_point_cloud_from_depth(depth[seq_num], intr, mask, extrinsic_matrix)
             # To verify
@@ -275,7 +278,12 @@ class SequenceDataset(torch.utils.data.Dataset):
             pass
         # TODO: Do the depth -> pcd transformation during data collection
         elif key == 'obs/pcd':
-            return self.get_pcd(ep)            
+            return self.get_pcd(ep)
+        elif key == 'obs/scan':
+            hd5key = "data/{}/observations/scan".format(ep)
+            ret = np.array(self.hdf5_file[hd5key])
+            # ret = np.append(ret, ret[-1])
+            return ret          
         elif key == 'grasps':
             hd5key = "data/{}/extras/grasps".format(ep)
             ret = np.array(self.hdf5_file[hd5key])
@@ -298,6 +306,11 @@ class SequenceDataset(torch.utils.data.Dataset):
             return ret
         elif key == 'object_dropped':
             hd5key = "data/{}/extras/object_dropped".format(ep)
+            ret = np.array(self.hdf5_file[hd5key])
+            # ret = np.append(ret, ret[-1])
+            return ret
+        elif key == 'base_collision':
+            hd5key = "data/{}/extras/{}".format(ep, key)
             ret = np.array(self.hdf5_file[hd5key])
             # ret = np.append(ret, ret[-1])
             return ret
@@ -348,12 +361,12 @@ class SequenceDataset(torch.utils.data.Dataset):
                 seq['obs/pcd_points'] = np.array(data["points"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_colors'] = np.array(data["colors"][seq_begin_index: seq_end_index]) 
                 seq['obs/pcd_normals'] = np.array(data["normals"][seq_begin_index: seq_end_index]) 
-            elif k == 'contacts' or k =='grasps' or k == 'grasp_label' or k == "ft_label" or k == 'object_dropped':
+            elif k == 'contacts' or k =='grasps' or k == 'grasp_label' or k == "ft_label" or k == 'object_dropped' or k == 'base_collision':
                 seq["labels"] = data[seq_begin_index+1: seq_end_index+1]
             else:
                 seq[k] = data[seq_begin_index: seq_end_index]
             # change label from bool to float
-            if k == 'grasps' or k == 'contacts' or k == 'grasp_label' or k == "ft_label" or k == 'object_dropped':
+            if k == 'grasps' or k == 'contacts' or k == 'grasp_label' or k == "ft_label" or k == 'object_dropped' or k == 'base_collision':
                 seq["labels"] = seq["labels"].astype(float)
 
             # print("seq[k]: ", seq[k].shape)
@@ -479,7 +492,8 @@ def prepare_data(input_batch):
         #         "contacts": [xs["contacts"] for xs in input_batch]
         #     }
         data_dict = {
-                "points": xs["obs"]["pcd_points"][:, 0],
+                # "points": xs["obs"]["pcd_points"][:, 0],
+                "scans": xs["obs"]["scan"][:, 0],
                 "actions": xs["actions"][:, 0], 
                 # "contacts": xs["contacts"],
                 # "grasps": xs["grasps"],
