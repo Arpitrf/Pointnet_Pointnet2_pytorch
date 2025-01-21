@@ -122,6 +122,7 @@ open_drawer/
 open_cabinet/
 obj_dropping*
 base_collision_detection/
+runs/
 
 # hdf5 files
 *.hdf5

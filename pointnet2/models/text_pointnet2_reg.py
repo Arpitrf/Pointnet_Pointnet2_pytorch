@@ -6,7 +6,7 @@ from sentence_transformers import SentenceTransformer
 
 
 class get_model(nn.Module):
-    def __init__(self, output_size=7, normal_channel=True):
+    def __init__(self, output_size=7, normal_channel=False):
         super(get_model, self).__init__()
         in_channel = 6 if normal_channel else 3
         self.normal_channel = normal_channel
@@ -40,7 +40,7 @@ class get_model(nn.Module):
         l3_xyz, l3_points = self.sa3(l2_xyz, l2_points)
         print("l3_points.shape: ", l3_points.shape)
         
-        text_embedding = self.text_encoder.encode(text)
+        text_embedding = self.text_encoder.encode(text, convert_to_tensor=True)
         # Ensure gradients are not calculated for the embeddings
         text_embedding.requires_grad = False
         pcd_embedding = l3_points.view(B, 1024)
@@ -61,12 +61,10 @@ class get_model(nn.Module):
 
 
 class get_loss(torch.nn.Module):
-    def __init__(self, mat_diff_loss_scale=0.001, axis_loss_scale=1.0):
+    def __init__(self):
         super(get_loss, self).__init__()
-        self.mat_diff_loss_scale = mat_diff_loss_scale
-        self.axis_loss_scale = axis_loss_scale
 
-    def quaternion_loss(q_pred, q_true):
+    def quaternion_loss(self, q_pred, q_true):
         # Normalize quaternions
         q_pred = F.normalize(q_pred, dim=-1)
         q_true = F.normalize(q_true, dim=-1)
@@ -84,8 +82,9 @@ class get_loss(torch.nn.Module):
         
         # Combined loss
         total_loss = lambda_pos * pos_loss + lambda_orn * orn_loss
-        return total_loss
-        print("total_loss: ", total_loss)
+        # print("total_loss: ", total_loss)
+        loss_dict = {'total': total_loss}
+        return loss_dict
         # # total_loss = self.axis_loss_scale * axis_loss 
         # loss_dict = {'total': total_loss, 
         #              'axis': axis_loss, 

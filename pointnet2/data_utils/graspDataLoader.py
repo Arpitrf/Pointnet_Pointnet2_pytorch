@@ -17,6 +17,25 @@ f_name_to_task = {
     "open_fridge": "open fridge"
 }
 
+
+def visualizeGraspPoses(grasp_poses, o3d_pcl):
+    # Given a 4x4 transformation matrix, create coordinate frame mesh at the pose
+    #     and scale down.
+    def o3dTFAtPose(pose, scale_down=10):
+        axes = o3d.geometry.TriangleMesh.create_coordinate_frame()
+        scaling_maxtrix = np.ones((4,4))
+        scaling_maxtrix[:3, :3] = scaling_maxtrix[:3, :3]/scale_down
+        scaled_pose = pose*scaling_maxtrix
+        axes.transform(scaled_pose)
+        return axes
+    world_frame_axes = o3dTFAtPose(np.eye(4))
+    models = [world_frame_axes, o3d_pcl]
+    for grasp_pose in grasp_poses:
+        grasp_axes = o3dTFAtPose(grasp_pose, scale_down=100)
+        models.append(grasp_axes)
+
+    o3d.visualization.draw_geometries(models)
+
 def pc_normalize(pc, axis=None):
     centroid = np.mean(pc, axis=0)
     pc = pc - centroid
@@ -30,7 +49,7 @@ def pc_normalize(pc, axis=None):
         return pc
 
 class GraspDataset(Dataset):
-    def __init__(self, root = './data', split='train', npoints=2500, normal_channel=False):
+    def __init__(self, root = '../data', split='train', npoints=2500, normal_channel=False):
         self.root = root
         self.npoints = npoints
         self.split = split
@@ -85,7 +104,11 @@ class GraspDataset(Dataset):
         o3d_pcl = o3d.geometry.PointCloud()
         o3d_pcl.points = o3d.utility.Vector3dVector(pcl[:, :3])
         o3d_pcl.colors = o3d.utility.Vector3dVector(org_colors)
-        o3d.visualization.draw_geometries([o3d_pcl])
+        # o3d.visualization.draw_geometries([o3d_pcl])
+        T_grasp = np.eye(4)
+        T_grasp[:3, 3] = grasp[:3]
+        T_grasp[:3, :3] = R.from_quat(grasp[3:]).as_matrix()
+        visualizeGraspPoses([T_grasp], o3d_pcl)
 
         # translation
         if self.split == 'train':
@@ -134,9 +157,9 @@ class GraspDataset(Dataset):
     
     def __len__(self):
         if self.split == 'train':
-            return 16
+            return 160
         elif self.split == 'val':
-            return 16
+            return 64
     
     def translation_augmentation(self, points, grasp, disp=np.array([0.05, 0.05, 0.0])):
         translation_matrix = np.array([

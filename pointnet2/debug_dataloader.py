@@ -11,7 +11,7 @@ from data_utils.OGDataLoader import SequenceDataset, prepare_data
 #     obs_keys=('scan',),  # observations we want to appear in batches
 #     # obs_info_keys=('seg_instance_id_info',),
 #     dataset_keys=(  # can optionally specify more keys here if they should appear in batches
-#         "actions",
+#         "actions",a
 #         target_key,
 #     ),
 #     target_key = target_key, 
@@ -61,10 +61,8 @@ from data_utils.OGDataLoader import SequenceDataset, prepare_data
 # # ===============================================================================
 from data_utils.graspDataLoader import GraspDataset
 
-dataset = GraspDataset()
-print("type(dataset): ", type(dataset))
-print("len(dataset): ", len(dataset))
-
-dataset[0]
-
-# trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=args.batch_size, shuffle=True, num_workers=10, drop_last=True)
+TRAIN_DATASET = GraspDataset()
+print("type(dataset): ", type(TRAIN_DATASET))
+print("len(dataset): ", len(TRAIN_DATASET))
+TRAIN_DATASET[0]
+trainDataLoader = torch.utils.data.DataLoader(TRAIN_DATASET, batch_size=16, shuffle=True, num_workers=10, drop_last=True)
